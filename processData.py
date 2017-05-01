@@ -11,6 +11,7 @@ import numpy as np
 import json, sqlite3, scipy, requests
 from matplotlib import pyplot as plt
 from matplotlib.ticker import FuncFormatter
+from matplotlib import lines
 from PIL import Image
 from StringIO import StringIO
 import time
@@ -183,7 +184,11 @@ def plot_top_sims(cos_sim_mat,aids,N_recs):
             axarr[idx_0,idx_1+1].imshow(image)
             axarr[idx_0,idx_1+1].axis("off")
             axarr[idx_0,idx_1+1].set_title('Sim = {:.2f}'.format(top_sims[idx_1]),size=10)
-    plt.savefig('Sample_Similarities.png',dpi=300,format='png')
+        # Add horizonatal lines:
+        if not idx_0==0 or idx_0==len(aids):
+            line = lines.Line2D((0,1),(1-1.0/len(aids)*idx_0*0.98,1-1.0/len(aids)*idx_0*0.98), transform=f.transFigure,color=[0,0,0])
+            f.lines.append(line)
+            # TODO: the 0.98 shouldn't be necessary. Fixit. 
 
 
 #%% Main code:
@@ -217,8 +222,8 @@ for aid_0 in aids:
         voting_users = mult_cols.nonzero()[0]
         if len(voting_users) > cutoff:
             numerator = np.sum(mult_cols)
-            denominator = np.sqrt(np.sum(data[mult_cols.nonzero()[0],aid_0].power(2))*\
-                          np.sum(data[mult_cols.nonzero()[0],aid_1].power(2)))
+            denominator = np.sqrt(np.sum(data[voting_users,aid_0].power(2))*\
+                          np.sum(data[voting_users,aid_1].power(2)))
             cos_sim_mat[aid_0,aid_1] = numerator/denominator
 
 # Plot a histrogram of these similarities:
