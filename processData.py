@@ -16,7 +16,7 @@ from PIL import Image
 from StringIO import StringIO
 import time
 
-database = 'bu//user_anime_data.db'
+database = 'user_anime_data.db'
 status_dict = {'1':'Watching', '2':'Completed', '3':'On-Hold', '4':'Dropped', '5':'????', '6':'Plan to Watch'}
 plt.style.use('ggplot')
 
@@ -127,25 +127,25 @@ def rating_distributions():
     plt.savefig('User_ratings.png',dpi=300,format='png')
     con.close()
 
+def count_aids(aid_dict_inv):
+    ''' Counts how many users in the database has rated an anime'''
+    con = sqlite3.connect(database)
+    cur = con.cursor()  
+    counts = cur.execute('SELECT Anime, COUNT(*) FROM UserData WHERE SCORE>0 \
+                            GROUP BY Anime').fetchall()
+    anime_counts = dict(counts)
+    aid_counts = dict([(aid_dict_inv[x[0]],x[1]) for x in anime_counts.items()])
+    con.close()
+    return aid_counts
 
-def get_highest_cos(cos_sim,aid,aid_dict,top_N=5):
-    ''' Returns the anime with the highest cosine similarity '''
-    closest = sorted(range(len(cos_sim[aid,:])), key=lambda i: cos_sim[aid,i])[-(top_N+1):]
-    closest.reverse()
+def get_avg_aid_scores():
     con = sqlite3.connect(database)
     cur = con.cursor()
-    aid_list = []
-    sim_list = []
-    for idx in range(0,top_N+1):
-        aid_2=closest[idx]
-        anime = cur.execute('SELECT Name FROM AnimeData where Anime=={0}'.format(aid_dict[aid_2])).fetchone()[0]
-        if aid_2==aid:
-            print('Recommendations for ' + anime + ':')
-        else:
-            print(anime + ': ' + str(cos_sim[aid,aid_2]))
-            aid_list.append(aid_2)
-            sim_list.append(cos_sim[aid,aid_2])
-    return aid_list, sim_list
+    anime_dict = cur.execute('SELECT Anime, Score FROM AnimeData').fetchall()
+    anime_dict = dict(anime_dict)
+    aid_scores = np.array([[anime_dict[aid_dict[x]] for x in range(len(aid_dict))]])
+    con.close()
+    return aid_scores
 
 
 def get_image(anime_id):
@@ -154,6 +154,8 @@ def get_image(anime_id):
     cur = con.cursor()
     image_link = cur.execute('SELECT Image FROM AnimeData where Anime=={0}'.format(anime_id)).fetchone()[0]
     image_name = image_link.split('/')[-1]
+    if image_name == '0.jpg':
+        return None
     try:
         image = Image.open('images/' + image_name)
     except IOError:
@@ -165,9 +167,31 @@ def get_image(anime_id):
         time.sleep(0.5)
     con.close()
     return image
-    
 
-def plot_top_sims(cos_sim_mat,aids,N_recs):
+def get_highest_cos(cos_sim,aid,aid_dict,top_N,aid_counts,threshold=0):
+    ''' Returns the anime with the highest cosine similarity. Uses rows. '''
+    closest = sorted(range(len(cos_sim[aid,:])), key=lambda i: cos_sim[aid,i])
+    closest.reverse()
+    con = sqlite3.connect(database)
+    cur = con.cursor()
+    aid_list = []
+    sim_list = []
+    idx = 0
+    while len(aid_list)<top_N:
+        aid_2=closest[idx]
+        anime = cur.execute('SELECT Name FROM AnimeData where Anime=={0}'.format(aid_dict[aid_2])).fetchone()[0]
+        if aid_2==aid:
+            print('Recommendations for ' + anime + ':')
+        elif aid_2 in aid_counts and aid_counts[aid_2]>threshold:
+            print(anime + ': ' + str(cos_sim[aid,aid_2]))
+            aid_list.append(aid_2)
+            sim_list.append(cos_sim[aid,aid_2])
+        idx+=1
+    return aid_list, sim_list
+
+def plot_top_sims(cos_sim_mat,aids,N_recs,aid_counts,
+                  img_name = 'Sample_similarities.png',threshold=0, 
+                  main_name = None, var_name = 'Sim'):
     ''' Plot of anime with the highest similarity scores. '''
     plt.figure(figsize=(6, 10))
     f, axarr = plt.subplots(len(aids),N_recs+1)
@@ -178,18 +202,31 @@ def plot_top_sims(cos_sim_mat,aids,N_recs):
         axarr[idx_0,0].imshow(image)
         axarr[idx_0,0].axis("off")
         axarr[idx_0,0].set_title('Query ' + str(idx_0+1),size=10)
-        top_aids,top_sims = get_highest_cos(cos_sim_mat,aid,aid_dict,N_recs)
+        top_aids,top_sims = get_highest_cos(cos_sim_mat,aid,aid_dict,N_recs,aid_counts,threshold)
         for (idx_1,aid_1) in enumerate(top_aids):
             image = get_image(aid_dict[aid_1])
-            axarr[idx_0,idx_1+1].imshow(image)
+            if image != None:
+                axarr[idx_0,idx_1+1].imshow(image)
             axarr[idx_0,idx_1+1].axis("off")
-            axarr[idx_0,idx_1+1].set_title('Sim = {:.2f}'.format(top_sims[idx_1]),size=10)
+            axarr[idx_0,idx_1+1].set_title(var_name + ' = {:.2f}'.format(top_sims[idx_1]),size=10)
         # Add horizonatal lines:
         if not idx_0==0 or idx_0==len(aids):
             line = lines.Line2D((0,1),(1-1.0/len(aids)*idx_0*0.98,1-1.0/len(aids)*idx_0*0.98), transform=f.transFigure,color=[0,0,0])
             f.lines.append(line)
             # TODO: the 0.98 shouldn't be necessary. Fixit. 
+    if main_name:
+        plt.suptitle(main_name)
+    plt.savefig(img_name,dpi=300,format='png')
+    plt.show()
 
+def cosine_sim(matrix, columns=True):
+    ''' Calculates cosine similarity between columns (for rows, columns = False)'''
+    if not columns:
+        matrix = np.transpose(matrix)
+    square_col_vals = np.array([np.sqrt(np.sum(np.power(matrix,2),axis=0))])
+    cos_sim_mat = np.dot(np.transpose(matrix),matrix)/  \
+                  np.dot(np.transpose(square_col_vals),square_col_vals)
+    return cos_sim_mat
 
 #%% Main code:
 # Explore the data a bit:
@@ -198,23 +235,19 @@ rating_distributions()
 aid_dict, aid_dict_inv = get_aid_dict(load=True)
 # Get sparse matrix with rows = users, columns = ratings
 data = process_user_ratings(aid_dict_inv)
+aid_counts = count_aids(aid_dict_inv)
+# Get average score for each anime:
+aid_scores = get_avg_aid_scores()
 
 
-
-
+#%% Scratch work:
 # Choose some specific anime to investigate
-death_note_aid =  aid_dict_inv[1535]
-code_geass_aid =  aid_dict_inv[1575] 
-cowboy_bebop_aid = aid_dict_inv[1]
-attack_on_titan_aid = aid_dict_inv[16498]
-mirai_nikki_aid = aid_dict_inv[10620]
-cicada_aid = aid_dict_inv[934]
 anime_ids = [1,1535,1575,16498,10620]
 aids = [aid_dict_inv[x] for x in anime_ids]
 
-# Calculate similarity for these guys:
+###### Similarity for these items from all data #####
 data = data.tocsc()
-cos_sim_mat = np.zeros((len(aid_dict),len(aid_dict)),dtype=np.float32)
+cos_sim_full = np.zeros((len(aid_dict),len(aid_dict)),dtype=np.float32)
 cutoff = 20
 for aid_0 in aids:
     for aid_1 in range(0,len(aid_dict)):
@@ -224,19 +257,33 @@ for aid_0 in aids:
             numerator = np.sum(mult_cols)
             denominator = np.sqrt(np.sum(data[voting_users,aid_0].power(2))*\
                           np.sum(data[voting_users,aid_1].power(2)))
-            cos_sim_mat[aid_0,aid_1] = numerator/denominator
-
+            cos_sim_full[aid_0,aid_1] = numerator/denominator
+np.save('cos_sim',cos_sim_full)
 # Plot a histrogram of these similarities:
 for aid in aids:
-    plt.hist(cos_sim_mat[aid,:])
+    plt.hist(cos_sim_full[aid,:])
     plt.show()
-
 # Plot the top similarities:
-plot_top_sims(cos_sim_mat,aids,3)
+plot_top_sims(cos_sim_full,aids,3)
 
-
-
-
-
+##### Similarity via matrix factorization #####
+print('Factorizing')
+from sgdFactorization import nonzero_factorization
+data = data.tocsr()
+for dim in [20,50,100,200]:
+    # Factorize matrix with stochastic graident descent:
+    U,Vt = nonzero_factorization(data, d=dim, batch_size=64, eps = 0.005, svd_start = True)
+    np.save('Vt_'+str(dim)+'.npy',Vt)
+    # Calculate cosine similarity between item vectors    
+    cos_sim_mat = cosine_sim(Vt)
+    # Plot top similar animes:
+    plot_top_sims(cos_sim_mat,aids,3,img_name = 'Svd_sim' + str(dim) + '.png',threshold=25)
+    # Plot histogram of similarities for the query anime:
+    for aid in aids:
+        plt.hist(cos_sim_mat[aid,:])
+        plt.show()
+    # Recommendations could be top sim*score. Calculate and plot this:
+    cos_sim_x_scores = np.multiply(np.dot(np.ones((aid_scores.shape[1],aid_scores.shape[0])),aid_scores),cos_sim_mat)
+    plot_top_sims(cos_sim_x_scores,aids,3,aid_counts,img_name = 'Svd_sim_'+str(dim)+'x_score.png',threshold=25,var_name='SimXScore')
 
 
