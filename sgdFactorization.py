@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Stochastic gradient descent to factorize sparse matrices while
-ignoring 
+Stochastic gradient descent to factorize sparse matrices. Ignores
+elements with zero values.
 
 Created on Tue May 02 22:33:56 2017
 

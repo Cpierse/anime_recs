@@ -243,37 +243,37 @@ def get_and_save_user_data(uid_dict,cur,con,cont=True):
 
 
 #%% Main code:
-
-# Get and save Club Ids:
-club_ids = crawl_clubs(club_page_num_start=0, max_pages=50,club_sort='5')
-with open('club_ids.txt', 'w') as fp:
-    for cid in club_ids:
-      fp.write("{0}\n".format(cid))
-    fp.close()
-
-# Load club ids and get user ids
-club_ids = open('club_ids.txt','r').read().split('\n')[:-1]
-user_ids = get_users_from_clubs(club_ids)
-
-# Continue this:
-#user_ids = open('user_ids.txt','r').read().split('\n')[:-1]
-#user_ids = get_users_from_clubs(club_ids,start_club=96,users=set(user_ids))
-# Stopped at 727
-
-# Map uids:
-user_ids = open('user_ids.txt','r').read().split('\n')[:-1]
-uid_dict = create_uid_dict(user_ids)
-
-# Load uid_dict:
-with open('uid_map.json','r') as fp:    
-    uid_dict = json.load(fp)
-
-# Start collecting user data:
-con,cur = setup_sql()
-get_and_save_user_data(uid_dict,cur,con,cont=True)
-con.close()
-
-# Get anime scores from the community:
-con,cur = setup_sql()
-record_anime_avg_scores(con,cur,update=True)
-con.close()
+if __name__ == "__main__":
+    # Get and save Club Ids:
+    club_ids = crawl_clubs(club_page_num_start=0, max_pages=50,club_sort='5')
+    with open('club_ids.txt', 'w') as fp:
+        for cid in club_ids:
+          fp.write("{0}\n".format(cid))
+        fp.close()
+    
+    # Load club ids and get user ids
+    club_ids = open('club_ids.txt','r').read().split('\n')[:-1]
+    user_ids = get_users_from_clubs(club_ids)
+    
+    # Continue this:
+    #user_ids = open('user_ids.txt','r').read().split('\n')[:-1]
+    #user_ids = get_users_from_clubs(club_ids,start_club=96,users=set(user_ids))
+    # Stopped at 727
+    
+    # Map uids:
+    #user_ids = open('user_ids.txt','r').read().split('\n')[:-1]
+    uid_dict = create_uid_dict(user_ids)
+    
+    # Load uid_dict:
+    #with open('uid_map.json','r') as fp:    
+    #    uid_dict = json.load(fp)
+    
+    # Start collecting user data:
+    con,cur = setup_sql()
+    get_and_save_user_data(uid_dict,cur,con,cont=True)
+    con.close()
+    
+    # Get anime scores from the community:
+    con,cur = setup_sql()
+    record_anime_avg_scores(con,cur,update=True)
+    con.close()

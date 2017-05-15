@@ -46,7 +46,7 @@ def process_user_ratings(aid_dict_inv, user_mean_centered = True):
     max_uid = cur.execute('SELECT MAX(Uid) FROM UserData').fetchone()[0]
     try:
         if user_mean_centered:
-            data = scipy.sparse.lil_matrix((max_uid,len(aid_dict)),dtype=scipy.float32)
+            data = scipy.sparse.lil_matrix((max_uid,len(aid_dict_inv)),dtype=scipy.float32)
             for uid in range(0,max_uid):
                 user_data = cur.execute('SELECT Anime, Score FROM UserData Where Uid=={0}'.format(uid)).fetchall()
                 user_data = np.array([[x[0],x[1]] for x in user_data if x[1]>0])
@@ -54,7 +54,7 @@ def process_user_ratings(aid_dict_inv, user_mean_centered = True):
                     mean_rating = np.mean(user_data[:,1])
                     data[uid,[aid_dict_inv[x[0]] for x in user_data]]=[scipy.float32(x[1]-mean_rating) for x in user_data]
         else:
-            data = scipy.sparse.lil_matrix((max_uid,len(aid_dict)),dtype=scipy.int8)
+            data = scipy.sparse.lil_matrix((max_uid,len(aid_dict_inv)),dtype=scipy.int8)
             for uid in range(0,max_uid):
                 user_data = cur.execute('SELECT Anime, Score FROM UserData Where Uid=={0}'.format(uid)).fetchall()
                 data[uid,[aid_dict_inv[x[0]] for x in user_data]]=[x[1] for x in user_data]
@@ -124,7 +124,8 @@ def rating_distributions():
     for (i,j) in ((0,0),(0,1),(1,0),(1,1)):
             axarr[i,j].xaxis.set_ticks_position('none')
             axarr[i,j].yaxis.set_ticks_position('none') 
-    plt.savefig('User_ratings.png',dpi=300,format='png')
+    plt.savefig('results\\User_ratings.png',dpi=300,format='png')
+    print([np.mean(all_ratings), np.std(all_ratings)])
     con.close()
 
 def count_aids(aid_dict_inv):
@@ -138,7 +139,7 @@ def count_aids(aid_dict_inv):
     con.close()
     return aid_counts
 
-def get_avg_aid_scores():
+def get_avg_aid_scores(aid_dict):
     con = sqlite3.connect(database)
     cur = con.cursor()
     anime_dict = cur.execute('SELECT Anime, Score FROM AnimeData').fetchall()
@@ -189,9 +190,10 @@ def get_highest_cos(cos_sim,aid,aid_dict,top_N,aid_counts,threshold=0):
         idx+=1
     return aid_list, sim_list
 
-def plot_top_sims(cos_sim_mat,aids,N_recs,aid_counts,
-                  img_name = 'Sample_similarities.png',threshold=0, 
-                  main_name = None, var_name = 'Sim'):
+def plot_top_sims(cos_sim_mat,aids,N_recs,aid_counts,aid_dict,
+                  img_name = 'results\\Sample_similarities.png',threshold=0, 
+                  main_name = None, var_name = 'Sim',
+                  plot_histograms=True):
     ''' Plot of anime with the highest similarity scores. '''
     plt.figure(figsize=(6, 10))
     f, axarr = plt.subplots(len(aids),N_recs+1)
@@ -218,6 +220,12 @@ def plot_top_sims(cos_sim_mat,aids,N_recs,aid_counts,
         plt.suptitle(main_name)
     plt.savefig(img_name,dpi=300,format='png')
     plt.show()
+    # Plot a histrogram of these similarities:
+    if plot_histograms:
+        for aid in aids:
+            plt.hist(cos_sim_mat[aid,:])
+            plt.show()
+    return None
 
 def cosine_sim(matrix, columns=True):
     ''' Calculates cosine similarity between columns (for rows, columns = False)'''
@@ -228,62 +236,33 @@ def cosine_sim(matrix, columns=True):
                   np.dot(np.transpose(square_col_vals),square_col_vals)
     return cos_sim_mat
 
+def train_val_test_split(data,val_frac=0.1,test_frac=0.1):
+    ''' Splits the data into train, val, test '''
+    np.random.seed(777)
+    non_zeros = data.nonzero()
+    L = len(non_zeros[0])
+    val,test = scipy.sparse.lil_matrix(data.shape),scipy.sparse.lil_matrix(data.shape)
+    indices = np.random.permutation(range(L))[:np.int(L*(val_frac+test_frac))]
+    val_indices = indices[0:np.int(len(indices)*val_frac/(val_frac+test_frac))]
+    test_indices = indices[np.int(len(indices)*val_frac/(val_frac+test_frac)):]
+    val[non_zeros[0][val_indices],non_zeros[1][val_indices]] = \
+        data[non_zeros[0][val_indices],non_zeros[1][val_indices]]
+    test[non_zeros[0][test_indices],non_zeros[1][test_indices]] = \
+        data[non_zeros[0][test_indices],non_zeros[1][test_indices]]
+    data[non_zeros[0][val_indices],non_zeros[1][val_indices]] = 0
+    data[non_zeros[0][test_indices],non_zeros[1][test_indices]] = 0
+    return data,val,test
+
 #%% Main code:
-# Explore the data a bit:
-rating_distributions()
-# Create a dictionary for the anime:
-aid_dict, aid_dict_inv = get_aid_dict(load=True)
-# Get sparse matrix with rows = users, columns = ratings
-data = process_user_ratings(aid_dict_inv)
-aid_counts = count_aids(aid_dict_inv)
-# Get average score for each anime:
-aid_scores = get_avg_aid_scores()
-
-
-#%% Scratch work:
-# Choose some specific anime to investigate
-anime_ids = [1,1535,1575,16498,10620]
-aids = [aid_dict_inv[x] for x in anime_ids]
-
-###### Similarity for these items from all data #####
-data = data.tocsc()
-cos_sim_full = np.zeros((len(aid_dict),len(aid_dict)),dtype=np.float32)
-cutoff = 20
-for aid_0 in aids:
-    for aid_1 in range(0,len(aid_dict)):
-        mult_cols = data[:,aid_0].multiply(data[:,aid_1])
-        voting_users = mult_cols.nonzero()[0]
-        if len(voting_users) > cutoff:
-            numerator = np.sum(mult_cols)
-            denominator = np.sqrt(np.sum(data[voting_users,aid_0].power(2))*\
-                          np.sum(data[voting_users,aid_1].power(2)))
-            cos_sim_full[aid_0,aid_1] = numerator/denominator
-np.save('cos_sim',cos_sim_full)
-# Plot a histrogram of these similarities:
-for aid in aids:
-    plt.hist(cos_sim_full[aid,:])
-    plt.show()
-# Plot the top similarities:
-plot_top_sims(cos_sim_full,aids,3)
-
-##### Similarity via matrix factorization #####
-print('Factorizing')
-from sgdFactorization import nonzero_factorization
-data = data.tocsr()
-for dim in [20,50,100,200]:
-    # Factorize matrix with stochastic graident descent:
-    U,Vt = nonzero_factorization(data, d=dim, batch_size=64, eps = 0.005, svd_start = True)
-    np.save('Vt_'+str(dim)+'.npy',Vt)
-    # Calculate cosine similarity between item vectors    
-    cos_sim_mat = cosine_sim(Vt)
-    # Plot top similar animes:
-    plot_top_sims(cos_sim_mat,aids,3,img_name = 'Svd_sim' + str(dim) + '.png',threshold=25)
-    # Plot histogram of similarities for the query anime:
-    for aid in aids:
-        plt.hist(cos_sim_mat[aid,:])
-        plt.show()
-    # Recommendations could be top sim*score. Calculate and plot this:
-    cos_sim_x_scores = np.multiply(np.dot(np.ones((aid_scores.shape[1],aid_scores.shape[0])),aid_scores),cos_sim_mat)
-    plot_top_sims(cos_sim_x_scores,aids,3,aid_counts,img_name = 'Svd_sim_'+str(dim)+'x_score.png',threshold=25,var_name='SimXScore')
+if __name__ == "__main__":
+    # Explore the data a bit:
+    rating_distributions()
+    # Create a dictionary for the anime:
+    aid_dict, aid_dict_inv = get_aid_dict(load=True)
+    # Get sparse matrix with rows = users, columns = ratings
+    data = process_user_ratings(aid_dict_inv)
+    aid_counts = count_aids(aid_dict_inv)
+    # Get average score for each anime:
+    aid_scores = get_avg_aid_scores(aid_dict)
 
 
