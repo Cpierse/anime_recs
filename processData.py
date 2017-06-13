@@ -13,8 +13,13 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from matplotlib import lines
 from PIL import Image
-from StringIO import StringIO
 import time
+
+import sys
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
+else:
+    from io import StringIO
 
 database = 'user_anime_data.db'
 status_dict = {'1':'Watching', '2':'Completed', '3':'On-Hold', '4':'Dropped', '5':'????', '6':'Plan to Watch'}
@@ -36,7 +41,7 @@ def get_aid_dict(load = True):
         with open('aid_map.json','w') as fp:    
             json.dump(aid_dict, fp, sort_keys=True)
         con.close()
-    aid_dict_inv = {v: k for k, v in aid_dict.iteritems()}
+    aid_dict_inv = {v: k for k, v in aid_dict.items()}
     return aid_dict, aid_dict_inv
 
 def process_user_ratings(aid_dict_inv, user_mean_centered = True):
@@ -251,6 +256,8 @@ def train_val_test_split(data,val_frac=0.1,test_frac=0.1):
         data[non_zeros[0][test_indices],non_zeros[1][test_indices]]
     data[non_zeros[0][val_indices],non_zeros[1][val_indices]] = 0
     data[non_zeros[0][test_indices],non_zeros[1][test_indices]] = 0
+    #val = val.tocsr()
+    #test = test.tocsr()
     return data,val,test
 
 #%% Main code:
