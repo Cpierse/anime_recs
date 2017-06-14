@@ -14,6 +14,8 @@ from matplotlib.ticker import FuncFormatter
 from matplotlib import lines
 from PIL import Image
 import time
+import os
+import shutil
 
 import sys
 if sys.version_info[0] < 3:
@@ -56,7 +58,7 @@ def process_user_ratings(aid_dict_inv, user_mean_centered = True):
                 user_data = cur.execute('SELECT Anime, Score FROM UserData Where Uid=={0}'.format(uid)).fetchall()
                 user_data = np.array([[x[0],x[1]] for x in user_data if x[1]>0])
                 if  user_data.shape[0]>0:
-                    mean_rating = np.mean(user_data[:,1])
+                    mean_rating = np.mean(user_data[:,1])-10**-4 # no rated show will get a 0 then.
                     data[uid,[aid_dict_inv[x[0]] for x in user_data]]=[scipy.float32(x[1]-mean_rating) for x in user_data]
         else:
             data = scipy.sparse.lil_matrix((max_uid,len(aid_dict_inv)),dtype=scipy.int8)
@@ -165,14 +167,20 @@ def get_image(anime_id):
     try:
         image = Image.open('images/' + image_name)
     except IOError:
-        response = requests.get(image_link)
-        img = Image.open(StringIO(response.content))
-        img.save('images/' + image_name)
+        #response = requests.get(image_link)
+        #img = Image.open(StringIO(response.content))
+        #img.save('images/' + image_name)
+        r = requests.get(image_link, stream=True)
+        if r.status_code == 200:
+            with open('images/' + image_name, 'wb') as fp:
+                r.raw.decode_content = True
+                shutil.copyfileobj(r.raw, fp)   
         image = Image.open('images/' + image_name)
         print('Saved image for anime_id = ' + str(anime_id))
         time.sleep(0.5)
     con.close()
     return image
+
 
 def get_highest_cos(cos_sim,aid,aid_dict,top_N,aid_counts,threshold=0):
     ''' Returns the anime with the highest cosine similarity. Uses rows. '''
@@ -223,7 +231,7 @@ def plot_top_sims(cos_sim_mat,aids,N_recs,aid_counts,aid_dict,
             # TODO: the 0.98 shouldn't be necessary. Fixit. 
     if main_name:
         plt.suptitle(main_name)
-    plt.savefig(img_name,dpi=300,format='png')
+    #plt.savefig(img_name,dpi=300,format='png')
     plt.show()
     # Plot a histrogram of these similarities:
     if plot_histograms:
@@ -241,7 +249,7 @@ def cosine_sim(matrix, columns=True):
                   np.dot(np.transpose(square_col_vals),square_col_vals)
     return cos_sim_mat
 
-def train_val_test_split(data,val_frac=0.1,test_frac=0.1):
+def train_val_test_split(data,val_frac=0.1,test_frac=0.1,save_data=True):
     ''' Splits the data into train, val, test '''
     np.random.seed(777)
     non_zeros = data.nonzero()
@@ -256,8 +264,18 @@ def train_val_test_split(data,val_frac=0.1,test_frac=0.1):
         data[non_zeros[0][test_indices],non_zeros[1][test_indices]]
     data[non_zeros[0][val_indices],non_zeros[1][val_indices]] = 0
     data[non_zeros[0][test_indices],non_zeros[1][test_indices]] = 0
-    #val = val.tocsr()
-    #test = test.tocsr()
+    val = val.tocsr()
+    test = test.tocsr()
+    if save_data:
+        scipy.sparse.save_npz(os.path.join('results','data.npz'),data)
+        scipy.sparse.save_npz(os.path.join('results','val.npz'),val)
+        scipy.sparse.save_npz(os.path.join('results','test.npz'),test)
+    return data,val,test
+
+def load_data_val_test(remove_zeros=True):
+    data = scipy.sparse.load_npz(os.path.join('results','data.npz'))
+    val = scipy.sparse.load_npz(os.path.join('results','val.npz'))
+    test = scipy.sparse.load_npz(os.path.join('results','test.npz'))
     return data,val,test
 
 #%% Main code:
