@@ -17,11 +17,7 @@ import time
 import os
 import shutil
 
-import sys
-if sys.version_info[0] < 3:
-    from StringIO import StringIO
-else:
-    from io import StringIO
+
 
 database = 'user_anime_data.db'
 status_dict = {'1':'Watching', '2':'Completed', '3':'On-Hold', '4':'Dropped', '5':'????', '6':'Plan to Watch'}
@@ -167,9 +163,6 @@ def get_image(anime_id):
     try:
         image = Image.open('images/' + image_name)
     except IOError:
-        #response = requests.get(image_link)
-        #img = Image.open(StringIO(response.content))
-        #img.save('images/' + image_name)
         r = requests.get(image_link, stream=True)
         if r.status_code == 200:
             with open('images/' + image_name, 'wb') as fp:
@@ -277,6 +270,27 @@ def load_data_val_test(remove_zeros=True):
     val = scipy.sparse.load_npz(os.path.join('results','val.npz'))
     test = scipy.sparse.load_npz(os.path.join('results','test.npz'))
     return data,val,test
+
+def topN_error_analysis_plot():
+    ''' Plot the error analysis on validation set '''
+    colors = 'bgrcmyk'
+    with open(os.path.join('results','factorization_errors_train_imp_topN.json'),'r') as fp:
+        error_dict = json.load(fp)
+    dummy_None_var = '75'
+    dims = list(error_dict.keys())
+    dims.sort(key=int)
+    for idx,dim in enumerate(dims):
+        # First change the 'None' to a number:
+        error_dict[dim]['ratings'][dummy_None_var]=error_dict[dim]['ratings']['None']
+        # Then get the plotting variables:
+        xs = [x for x in error_dict[dim]['ratings'].keys()]
+        Xs = sorted([int(x) for x in xs if x!='None'])
+        Ys = [error_dict[dim]['ratings'][str(x)][0] for x in Xs]
+        plt.plot(Xs,Ys,colors[idx],label=dim)
+    plt.legend()
+    plt.xlabel('Top N similarity')
+    plt.ylabel('Average absolute error')
+    plt.savefig(os.path.join('results','Error_topN+imp.png'),dpi=150,format='png')
 
 #%% Main code:
 if __name__ == "__main__":

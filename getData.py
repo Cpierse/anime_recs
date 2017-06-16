@@ -6,11 +6,15 @@ Created on Fri Apr 28 15:16:53 2017
 
 @author: Chris Pierse
 """
-import urllib2
 from bs4 import BeautifulSoup
 import numpy as np
-import re, time, json
-import sqlite3, base64
+import re, time, json, sys
+import sqlite3 #, base64
+
+if sys.version_info[0] < 3:
+    import urllib2
+else:
+    from urllib import request as urllib2
 #%% Gathering users through club data:
 def crawl_club_users(cid):
     ''' Crawl through and get all user ids in a specific club'''
@@ -95,81 +99,60 @@ def get_user_info(user_id):
     time.sleep(0.1)
     return user_dict, anime_dict
 
-def get_anime_info(anime_name, anime_id):
-    ''' Get a anime info. Currently returns: score. Requires authentification.
-        Save user and pass on two lines in text file. '''
-    url = 'https://myanimelist.net/api/anime/search.xml?q={0}'.format(anime_name.replace(' ','+'))
-    request = urllib2.Request(url)
-    user, password = open('user_pass.txt','r').read().split('\n')
-    base64string = base64.encodestring('%s:%s' % (user,password)).replace('\n', '')
-    request.add_header("Authorization", "Basic %s" % base64string)   
-    page = urllib2.urlopen(request)
-    soup = BeautifulSoup(page)
-    all_links = soup.find_all('entry')
-    time.sleep(0.25)
-    for link in all_links:
-        anime_db_id = int(link.id.text)
-        if int(anime_db_id)==anime_id:
-            # Some people have seriously rated anime that has not aired.
-            if link.status.text==u'Not yet aired':
-                return 0.0
-            return np.float32(link.score.text)
-    # If the name is something unrecognizable, let's try the id:
-    url = 'https://myanimelist.net/anime/{0}'.format(anime_id)
-    page = urllib2.urlopen(url)
-    soup = BeautifulSoup(page)
-    all_links = soup.find_all('div', attrs={'itemprop':'aggregateRating'})
-    time.sleep(0.25)
-    if len(all_links)==1:
-        score = all_links[0].find(itemprop="ratingValue").get_text()
-        if score==u'N/A':
-            score = 0.0
-        else:
-            score = np.float32(score)
-        return score
-    # Alternative location of score:
-    all_links = soup.find_all('div', attrs={'class':'fl-l score'})
-    if len(all_links)==1: 
-        score = all_links[0].text
-        if score==u'\n        N/A\n      ':
-            score = 0.0
-        else:
-            score = np.float32(score)
-        return score
-    # If this still doesn't work, try several things using variants of the name:
-    if len(anime_name.split(' '))>1:
-        score1 = get_anime_info(' '.join(anime_name.split(' ')[0:-1]), anime_id)
-        score2 = get_anime_info(' '.join(anime_name.split(' ')[1:]), anime_id)
-        if score1 >=0:
-            return score1
-        if score2 >=0:
-            return score2
-    else:
-        return np.nan
+def get_anime_info(anime_id):
+    ''' Get anime info: score, num_ratings '''
+    # We'll scrape the anime score and number of ratings using the anime_id
+    print(anime_id)
+    try:
+        url = 'https://myanimelist.net/anime/{0}'.format(anime_id)
+        page = urllib2.urlopen(url)
+        soup = BeautifulSoup(page)
+        all_links = soup.find_all('div', attrs={'itemprop':'aggregateRating'})
+        time.sleep(0.25)
+        if len(all_links)==1:
+            score = all_links[0].find(itemprop="ratingValue").get_text()
+            num_ratings = all_links[0].find(itemprop="ratingCount").get_text()
+            num_ratings = np.int(num_ratings.replace(',',''))
+            if score==u'N/A':
+                score = 0.0
+            else:
+                score = np.float32(score)
+            return score, num_ratings
+        # Alternative location of score:
+        all_links = soup.find_all('div', attrs={'class':'fl-l score'})
+        if len(all_links)==1: 
+            score = all_links[0].text
+            num_ratings = all_links[0]['data-user'].split(' ')[0]
+            num_ratings = np.int(num_ratings.replace(',',''))
+            if score==u'\n        N/A\n      ':
+                score = 0.0
+            else:
+                score = np.float32(score)
+            return score, num_ratings
+        return None, None
+    except: return None,None
 
-
-def record_anime_avg_scores(con,cur,update=False):
-    ''' Records the community's score for an anime '''
-    anime_data = con.execute('SELECT Anime, Name, Score FROM AnimeData').fetchall()
+def record_anime_info(con,cur,update=False):
+    ''' Records the community's score and number of ratings for an anime '''
+    anime_data = con.execute('SELECT Anime, Name, Score, Number FROM AnimeData').fetchall()
     idx = 0
-    for anime_id,anime_name,score in anime_data:
-        if score>=0 and not update:
+    error_list = []
+    for anime_id,anime_name,score,number in anime_data:
+        if score and number and not update:
             print(anime_name +' score already in database')
             continue
-        score = get_anime_info(anime_name.encode('ascii','ignore'), anime_id)
-        if not score>=0:
-            anime_name_temp = ''.join([i if ord(i) < 128 else ' ' for i in anime_name])
-            score = get_anime_info(anime_name_temp, anime_id)
-        if not score>=0:
-            score = np.float32(raw_input("Please find the score for " + anime_name + ' ' + str(anime_id) + ': '))
+        score, number = get_anime_info(anime_id)
+        if score!=None and number!=None:
+            cur.execute('UPDATE AnimeData SET Score={0}, Number={1} WHERE Anime=={2}'.format(score,number,anime_id))
         else:
-            cur.execute('UPDATE AnimeData SET Score={0} WHERE Anime=={1}'.format(score,anime_id))
+            error_list.append(anime_id)
         idx+=1
         print(anime_name +' score now in database. Anime_id: '+str(anime_id))
         if idx==25:
             idx = 0
             con.commit()
     con.commit()
+    return error_list
 
 
 def create_uid_dict(user_ids):
@@ -275,5 +258,5 @@ if __name__ == "__main__":
     
     # Get anime scores from the community:
     con,cur = setup_sql()
-    record_anime_avg_scores(con,cur,update=True)
+    errors = record_anime_info(con,cur,update=False)
     con.close()
