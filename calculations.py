@@ -24,7 +24,7 @@ aid_scores = processData.get_avg_aid_scores(aid_dict)
 aid_counts = processData.count_aids(aid_dict_inv)
 
 # Choose specific anime to investigate:
-anime_ids = [1,1535,1575,16498,10620]
+anime_ids = [1,1535,1575,16498,10620,840]
 aids = [aid_dict_inv[x] for x in anime_ids]
 #%% Key functions:
 def predict_ratings(user_rows,cos_sim_mat,threshold=0,top_N=None):
@@ -37,12 +37,14 @@ def predict_ratings(user_rows,cos_sim_mat,threshold=0,top_N=None):
         results = []
         height,width = user_rows.shape
         for i in range(height):
-            valid_anime = np.dot(np.expand_dims(user_rows[i]!=0,axis=1),np.ones((1,width)))
-            specific_cos_sim = np.multiply(valid_anime,cos_sim_mat)
-            indices = np.argsort(specific_cos_sim,axis=1)
+            valid_anime = user_rows[i]!=0
+            specific_cos_sim = np.copy(cos_sim_mat)
+            specific_cos_sim[~valid_anime[0,:],:]=0
+            indices = np.argsort(np.argsort(specific_cos_sim,axis=0),axis=0)
+            specific_cos_sim = np.copy(cos_sim_mat)
             for x in zip(indices,range(cos_sim_mat.shape[0])):
-                specific_cos_sim[x[1],x[0][:-(top_N+1)]] = 0
-            result = np.dot(np.expand_dims(user_rows[i],axis=0),np.transpose(specific_cos_sim))/(+1e-10+np.sum(specific_cos_sim,axis=1))
+                specific_cos_sim[x[0][:-(top_N+1)],x[1]] = 0
+            result = np.dot(np.expand_dims(user_rows[i],axis=0),specific_cos_sim)/(+1e-10+np.sum(specific_cos_sim,axis=0))
             results.append(result)
         return np.array(results)[:,0,:]
 
@@ -278,16 +280,16 @@ def factorization_results(subtitle='train_',dims = [10,20,25,35,50,75,100,125,15
     plt.savefig('results\\Error_factorization_'+subtitle[:-1]+'.png',dpi=300,format='png')
     plt.show()
 
-def prep_final_ingredients(dim=50, implicit=True, subtitle='imp_',threshold=0):
+def prep_final_ingredients(dim=50, implicit=True, bias=False, subtitle='imp_',threshold=0):
     ''' Prepare the necessary files for deployment'''
     # Load Data
     data = processData.process_user_ratings(aid_dict_inv)
     data = remove_zeroscore_anime(data.tolil(),aid_dict_inv)
     print(len(data.nonzero()[0]))
     # Factorize the matrix:
-    U,Vt = nonzero_factorization(data, d=dim, batch_size=64, eps =10**-4,
+    U,Vt = nonzero_factorization(data.tocsr(), d=dim, batch_size=64, eps =10**-4,
                                  eps_drop_frac=0.1, svd_start = True,
-                                 lamb=0, bias=False,implicit=implicit)
+                                 lamb=0, bias=bias,implicit=implicit)
     #np.save(os.path.join('results','Vt_'+str(subtitle)+str(dim)+'.npy'),Vt)
     #np.save(os.path.join('results','U_'+str(subtitle)+str(dim)+'.npy'),U)
     # Calculate cosine sim:
@@ -302,32 +304,13 @@ def prep_final_ingredients(dim=50, implicit=True, subtitle='imp_',threshold=0):
 
 #%% Main code:
 if __name__ == "__main__":
-    #factorization_results()
-    #factorization_results(True,'train_nz_')
-    #factorization_results(subtitle='train_reg-3_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-3)
-    #factorization_results(subtitle='train_reg-4_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-4)
-    #factorization_results(subtitle='train_reg-2_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-2)
-    #factorization_results(subtitle='train_reg-1.5_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-2)
-    #factorization_results(subtitle='train_nz_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=0)
-    #factorization_results(subtitle='train_reg-2_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-2)
-
-    subtitle = 'train_imp_'
-    dims = [50,100, 150, 200]
-    val_frac=0.1
-    test_frac=0.1
-    lamb=0#10**-3
-    implicit=True
-    svd_start=True
-    load = False
-    eps = 10**-4
-    bias = False
-    factorization_results(subtitle=subtitle,dims=dims,val_frac=val_frac,
-                          test_frac=test_frac,lamb=lamb,implicit=implicit,
-                          svd_start=svd_start)
+    prep_final_ingredients()
 
 
 
-#%% Extra code for very specific figures:
+
+
+#%% Extra code for very specific figures and tests:
 if __name__ == "test":
     # Plot mean absolute errors vs matrix rank.
     def error_figure():
@@ -353,9 +336,9 @@ if __name__ == "test":
     ### Sample user prediction: ###
     # Create user:
     user_row = np.zeros((len(aid_dict)))
-    user_aids = aids[1:4]
-    user_aid_names = ['Death Note', 'Code Geass', 'Shingeki no Kyojin']
-    user_row[user_aids] = [10,9,8]
+    user_aids = aids[1:4]+[aids[5]]
+    user_aid_names = ['Death Note', 'Code Geass', 'Shingeki no Kyojin','LotGH']
+    user_row[user_aids] = [10,9,8,9]
     # Get cosine similarity:
     #Vt = np.load('results\\Vt_50.npy')
     #cos_sim_mat = processData.cosine_sim(Vt)
@@ -384,6 +367,25 @@ if __name__ == "test":
         user_aid_images.append(image)
         
     ### Playing with regularization:
-    factorization_results(remove_zeros = True,subtitle='train_reg-3_',dims = [50,25,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-3)
-    factorization_results(remove_zeros = True,subtitle='train_reg-4_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-4)
+    #factorization_results()
+    #factorization_results(True,'train_nz_')
+    #factorization_results(subtitle='train_reg-3_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-3)
+    #factorization_results(subtitle='train_reg-4_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-4)
+    #factorization_results(subtitle='train_reg-2_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-2)
+    #factorization_results(subtitle='train_reg-1.5_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-2)
+    #factorization_results(subtitle='train_nz_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=0)
+    #factorization_results(subtitle='train_reg-2_',dims = [25,50,100,200],val_frac=0.1,test_frac=0.1,lamb=10**-2)
 
+    #    subtitle = 'train_imp_'
+    #    dims = [50,100, 150, 200]
+    #    val_frac=0.1
+    #    test_frac=0.1
+    #    lamb=0#10**-3
+    #    implicit=True
+    #    svd_start=True
+    #    load = False
+    #    eps = 10**-4
+    #    bias = False
+    #    factorization_results(subtitle=subtitle,dims=dims,val_frac=val_frac,
+    #                          test_frac=test_frac,lamb=lamb,implicit=implicit,
+    #                          svd_start=svd_start)

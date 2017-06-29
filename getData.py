@@ -8,13 +8,22 @@ Created on Fri Apr 28 15:16:53 2017
 """
 from bs4 import BeautifulSoup
 import numpy as np
-import re, time, json, sys
+import re, time, json, sys, os
 import sqlite3 #, base64
 
 if sys.version_info[0] < 3:
     import urllib2
 else:
     from urllib import request as urllib2
+import requests
+
+# Caching
+from ediblepickle import checkpoint
+import string
+cache_dir = 'cache'
+if not os.path.exists(cache_dir):
+    os.mkdir(cache_dir)
+    
 #%% Gathering users through club data:
 def crawl_club_users(cid):
     ''' Crawl through and get all user ids in a specific club'''
@@ -99,61 +108,117 @@ def get_user_info(user_id):
     time.sleep(0.1)
     return user_dict, anime_dict
 
+def related_anime(soup):
+    ''' Get related anime from soup object '''
+    related = []
+    all_links = soup.find_all('table', attrs={'class':'anime_detail_related_anime'})
+    if len(all_links)==1:
+        all_links = all_links[0].find_all('tr')
+        for link in all_links:
+            for row in link.find_all('a',href=True):
+                data = str.split(row['href'],'/')
+                if data[1]=='anime':
+                    related.append(data[2])
+    return related
+
+def anime_genres(soup):
+    genres = []
+    all_links = soup.find_all('div')#, attrs={'class':'anime_detail_related_anime'})
+    for link in all_links:
+        if link.span:
+            if link.span.text=='Genres:':
+                genres = [x.text for x in link.find_all('a')]
+    return genres
+
+def anime_english_name(soup):
+    english_name = ''
+    all_links = soup.find_all('div')
+    for link in all_links:
+        if link.span:
+            if link.span.text=='English:':
+                english_name =  link.text[10:-3]
+    return english_name
+
+def anime_score_number(soup):
+    all_links = soup.find_all('div', attrs={'itemprop':'aggregateRating'})
+    if len(all_links)==1:
+        score = all_links[0].find(itemprop="ratingValue").get_text()
+        num_ratings = all_links[0].find(itemprop="ratingCount").get_text()
+        num_ratings = np.int(num_ratings.replace(',',''))
+        if score==u'N/A':
+            score = 0.0
+        else:
+            score = np.float32(score)
+        return score, num_ratings
+    # Alternative location of score:
+    all_links = soup.find_all('div', attrs={'class':'fl-l score'})
+    if len(all_links)==1: 
+        score = all_links[0].text
+        num_ratings = all_links[0]['data-user'].split(' ')[0]
+        num_ratings = np.int(num_ratings.replace(',',''))
+        if score==u'\n        N/A\n      ':
+            score = 0.0
+        else:
+            score = np.float32(score)
+        return score, num_ratings
+    return None, None
+
+@checkpoint(key=string.Template('{0}.p'),work_dir=cache_dir)
+def get_page(anime_id):
+    url = 'https://myanimelist.net/anime/{0}'.format(anime_id)
+    response = requests.get(url)
+    time.sleep(0.25)
+    return response.text
+
 def get_anime_info(anime_id):
-    ''' Get anime info: score, num_ratings '''
+    ''' Get anime info: score, num_ratings, genres, related anime '''
     # We'll scrape the anime score and number of ratings using the anime_id
-    print(anime_id)
     try:
-        url = 'https://myanimelist.net/anime/{0}'.format(anime_id)
-        page = urllib2.urlopen(url)
+        page = get_page(anime_id)
         soup = BeautifulSoup(page)
-        all_links = soup.find_all('div', attrs={'itemprop':'aggregateRating'})
-        time.sleep(0.25)
-        if len(all_links)==1:
-            score = all_links[0].find(itemprop="ratingValue").get_text()
-            num_ratings = all_links[0].find(itemprop="ratingCount").get_text()
-            num_ratings = np.int(num_ratings.replace(',',''))
-            if score==u'N/A':
-                score = 0.0
-            else:
-                score = np.float32(score)
-            return score, num_ratings
-        # Alternative location of score:
-        all_links = soup.find_all('div', attrs={'class':'fl-l score'})
-        if len(all_links)==1: 
-            score = all_links[0].text
-            num_ratings = all_links[0]['data-user'].split(' ')[0]
-            num_ratings = np.int(num_ratings.replace(',',''))
-            if score==u'\n        N/A\n      ':
-                score = 0.0
-            else:
-                score = np.float32(score)
-            return score, num_ratings
-        return None, None
-    except: return None,None
+        score, number = anime_score_number(soup)
+        genres = anime_genres(soup)
+        related = related_anime(soup)
+        english_name = anime_english_name(soup)
+        return score, number, genres, related, english_name
+    except:
+        return None, None, [], [], ''
 
 def record_anime_info(con,cur,update=False):
     ''' Records the community's score and number of ratings for an anime '''
-    anime_data = con.execute('SELECT Anime, Name, Score, Number FROM AnimeData').fetchall()
+    anime_data = con.execute('SELECT Anime, Name, Score, Number, Genres, Related FROM AnimeData').fetchall()
     idx = 0
     error_list = []
-    for anime_id,anime_name,score,number in anime_data:
-        if score and number and not update:
+    genre_dict = {}
+    for anime_id,anime_name,score,number,genres,related_og in anime_data:
+        if not update and score and number and genres:
             print(anime_name +' score already in database')
             continue
-        score, number = get_anime_info(anime_id)
+        score, number, genres, related, english_name = get_anime_info(anime_id)
+        genre_ids = []
+        for genre in genres:
+            if genre not in genre_dict:
+                genre_dict[genre] = len(genre_dict)
+            genre_ids.append(genre_dict[genre])
         if score!=None and number!=None:
-            cur.execute('UPDATE AnimeData SET Score={0}, Number={1} WHERE Anime=={2}'.format(score,number,anime_id))
+            genre_id_string = ','.join([str(x) for x in genre_ids])
+            related_string = ','.join([str(x) for x in related])
+            english_name=english_name.replace('"',"'")
+            cur.execute('UPDATE AnimeData SET Score={1}, Number={2}, Genres="{3}", \
+                         Related="{4}", English_Name="{5}" WHERE Anime=={0}'.format( \
+                         anime_id,score,number, \
+                         genre_id_string, related_string, english_name))
         else:
             error_list.append(anime_id)
         idx+=1
-        print(anime_name +' score now in database. Anime_id: '+str(anime_id))
-        if idx==25:
-            idx = 0
+        print('{0} ({1}) added to database. Score = {2}. Number = {3}. Genres = {4}. \
+                Related = {5} '.format(anime_name,anime_id, score, number, genres, related_string))
+        if idx%25==24:
             con.commit()
     con.commit()
+    with open('genre_dict.json','w') as fp:    
+        json.dump(genre_dict, fp)
     return error_list
-
 
 def create_uid_dict(user_ids):
     # Load or create the uid_map
@@ -193,6 +258,9 @@ def setup_sql():
         Type INT, \
         Score FLOAT32, \
         Synonyms VARCHAR, \
+        Number INT, \
+        Genres VARCHAR, \
+        Related VARCHAR, \
         Image VARCHAR)")
     
     con.commit()
@@ -258,5 +326,5 @@ if __name__ == "__main__":
     
     # Get anime scores from the community:
     con,cur = setup_sql()
-    errors = record_anime_info(con,cur,update=False)
+    errors = record_anime_info(con,cur,update=True)
     con.close()

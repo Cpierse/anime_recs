@@ -1,0 +1,38 @@
+/* -----------------------
+Background image
+------------------------*/
+#bg {
+  position: fixed; 
+  top: -50%; 
+  left: -50%; 
+  width: 200%; 
+  height: 200%;
+}
+#bg img {
+  position: absolute; 
+  top: 0; 
+  left: 0; 
+  right: 0; 
+  bottom: 0; 
+  margin: auto; 
+  min-width: 50%;
+  min-height: 50%;
+}
+
+/* -----------------------
+Base styles
+------------------------*/
+
+#page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 700px;
+    margin: 50px auto;
+    padding: 20px;
+    /*background: white;*/
+    -moz-box-shadow: 0 0 20px black;
+    -webkit-box-shadow: 0 0 20px black;
+    box-shadow: 0 0 20px black;
+}
+
+

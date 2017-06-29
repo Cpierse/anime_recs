@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bootswatch: Cyborg</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<link rel="stylesheet" href="static/bootstrap.min.css" media="screen">
+<!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+<!--[if lt IE 9]>
+<script src="../bower_components/html5shiv/dist/html5shiv.js"></script>
+<script src="../bower_components/respond/dest/respond.min.js"></script>
+<![endif]-->
+
+<!-- Override CSS file - add your own CSS rules -->
+<link rel="stylesheet" href="static/styles.css">
+
+<body>
+  <div id="page-wrap">
+    <h1 style="text-align:center"> Anime Recommendations </h1>
+    <h5 style="text-align:center"> Find your next favorite anime </h5>
+  </div>
+  {% if not images %}
+  <div id="page-wrap">
+    <form method="POST"  action="{{ url_for('index') }}">
+      <div class="input-group">
+          <span class="input-group-addon">MyAnimeList Username:</span>
+          <input type="text" class="form-control" name="user_id">
+          <span class="input-group-btn">
+            <button class="btn btn-default" type="submit">Submit</button>
+          </span>
+      </div>
+    </form>
+  </div>
+  {% else %}
+  <div id="page-wrap">
+    {% for image in images %}
+			<div class="col-xs-4">
+			  <img src={{image}} align="middle" width=180  height=248 \>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+
+
+  <div id="bg">
+    <img src="static/images/anime_collage(dinocojv)-washed.jpg">
+  </div>
+</body>
+
+
+
+
+
+</html>
+
