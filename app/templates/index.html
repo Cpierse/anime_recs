@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Bootswatch: Cyborg</title>
+<title>Anime Recommendations</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <link rel="stylesheet" href="static/bootstrap.min.css" media="screen">
@@ -15,13 +15,17 @@
 <!-- Override CSS file - add your own CSS rules -->
 <link rel="stylesheet" href="static/styles.css">
 
+
+
 <body>
   <div id="page-wrap">
     <h1 style="text-align:center"> Anime Recommendations </h1>
     <h5 style="text-align:center"> Find your next favorite anime </h5>
   </div>
-  {% if not images %}
+  {% if not results %}
+  <!-- Input your MyAnimeList Account name to pull your data -->
   <div id="page-wrap">
+    <center> Generate recommendations from your anime ratings on MyAnimeList </center>
     <form method="POST"  action="{{ url_for('index') }}">
       <div class="input-group">
           <span class="input-group-addon">MyAnimeList Username:</span>
@@ -32,11 +36,68 @@
       </div>
     </form>
   </div>
+
+<!-- Manually input your tastes -->
+  <div id="page-wrap">
+    <form method="POST"  action="{{ url_for('index') }}">
+    <center> Or, rate a few anime here to generate recommendations  </center>
+      <div id="anime-list">
+        <div class="input-group" class="form-control" name="anime-element" id="anime-element">
+
+
+
+
+          <!-- Anime name -->
+          <span class="input-group-addon">Anime name:</span>
+          <!-- <select  class="form-control" id="select" name="anime">
+            {% for name,id in names_ids %}  
+              <option data-value={{id}}> {{name}} </option>
+            {% endfor %}
+          </select> -->
+          <input list="anime" class="form-control" name="anime" style="width:455px">
+            <datalist id="anime" >
+              {% for name,id in names_ids %}  
+                <option data-value={{id}}> {{name}} </option>
+              {% endfor %}
+            </datalist>
+          </input>
+          
+
+
+
+          <!-- Anime rating -->
+          <span class="btn-group" class="form-control">
+            <select  class="form-control" id="select" name="rating">
+              {% for i in ['1','2','3','4','5','6','7','8','9','10'] %}
+                {% if i=='1' %} 
+                  <option value={{i}}> {{i+' star'}} </option>
+                {% else %}  
+                  <option value={{i}}> {{i+' stars'}} </option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </span>
+
+
+
+
+
+        </div>
+      </div>
+
+      <button class="btn btn-default" type="submit">Submit</button>
+      <button class="btn btn-default" type ="button" onclick="newAnimeElement()" >Add anime</button>
+    </form>
+  </div>
   {% else %}
   <div id="page-wrap">
-    {% for image in images %}
+    {% for image,url,name in results %}
 			<div class="col-xs-4">
-			  <img src={{image}} align="middle" width=180  height=248 \>
+        <a href={{url}}>
+          <span title="{{name}}"/>
+			      <img src={{image}} align="middle" width=180  height=248 />
+          </span>
+        </a>
       </div>
     {% endfor %}
   </div>
@@ -50,7 +111,13 @@
 </body>
 
 
-
+<script>
+function newAnimeElement() {
+    var itm = document.getElementById("anime-element");
+    var cln = itm.cloneNode(true);
+    document.getElementById("anime-list").appendChild(cln);
+}
+</script>
 
 
 </html>
