@@ -35,4 +35,12 @@ Base styles
     box-shadow: 0 0 20px black;
 }
 
-
+/* -----------------------
+Hide until hovered
+------------------------*/
+.hover-content {
+    display:none;
+}
+.hover-parent:hover .hover-content {
+    display:block;
+}

@@ -9,7 +9,7 @@ Created on Wed Jun 28 13:47:45 2017
 from flask import Flask, render_template, request, redirect
 
 # Imports from my code:
-from appCalculations import get_recs,get_names_ids
+from appCalculations import get_recs,get_names_ids, get_results
 
 #%% Definitions:
 
@@ -32,13 +32,9 @@ def index():
         if "user_id" in request.form:
             user_id = request.form['user_id']
             # Generate the recs and related info:
-            recs =  get_recs(user_id=user_id)
-            images = ['https://myanimelist.cdn-dena.com/images/anime/{0}'
-                      .format(x[1]) for x in recs]
-            urls = ['https://myanimelist.net/anime/{0}'
-                      .format(x[0]) for x in recs]
-            names = [x[2] for x in recs]
-            results = zip(images,urls,names)
+            recs_plus =  get_recs(user_id=user_id)
+            # Process the recommendations and extra data:
+            results = get_results(recs_plus)
         elif "anime" in request.form:
             # Process the request:
             anime = request.form.getlist('anime')
@@ -47,15 +43,11 @@ def index():
             user_ratings = dict([x for x in zip(anime_ids,
                                     request.form.getlist('rating'))
                                     if x[0] is not None])
-            # Generate the recs and related info:
-            recs =  get_recs(user_ratings=user_ratings) 
-            images = ['https://myanimelist.cdn-dena.com/images/anime/{0}'
-                      .format(x[1]) for x in recs]
-            urls = ['https://myanimelist.net/anime/{0}'
-                      .format(x[0]) for x in recs]
-            names = [x[2] for x in recs]
-            results = zip(images,urls,names)
             print(user_ratings)
+            # Generate the recs and related info:
+            recs_plus =  get_recs(user_ratings=user_ratings) 
+            # Process the recommendations and extra data:
+            results = get_results(recs_plus)
         else:
             results=None
     else:

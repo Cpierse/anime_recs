@@ -13,8 +13,13 @@
 <![endif]-->
 
 <!-- Override CSS file - add your own CSS rules -->
-<link rel="stylesheet" href="static/styles.css">
+<link rel="stylesheet" href="/static/styles.css">
 
+<!-- Hide extra info until hovered -->
+<style>
+.hover-content {display:none;}
+.hover-parent:hover .hover-content {display:block;}
+</style>
 
 
 <body>
@@ -40,7 +45,7 @@
 <!-- Manually input your tastes -->
   <div id="page-wrap">
     <form method="POST"  action="{{ url_for('index') }}">
-    <center> Or, rate a few anime here to generate recommendations  </center>
+    <center> Or, select a few anime here to generate recommendations (ratings optional)  </center>
       <div id="anime-list">
         <div class="input-group" class="form-control" name="anime-element" id="anime-element">
 
@@ -88,19 +93,42 @@
       <button class="btn btn-default" type="submit">Submit</button>
       <button class="btn btn-default" type ="button" onclick="newAnimeElement()" >Add anime</button>
     </form>
+    <p/><p/>
   </div>
   {% else %}
+  <!-- Display all results -->
   <div id="page-wrap">
-    {% for image,url,name in results %}
-			<div class="col-xs-4">
-        <a href={{url}}>
-          <span title="{{name}}"/>
-			      <img src={{image}} align="middle" width=180  height=248 />
-          </span>
-        </a>
-      </div>
+    {% for idx,image,url,name,contributors in results %}
+      {% if idx%3==0 %}
+        <div class="row">
+      {% endif %}
+			  <div class="col-xs-4">
+          <center>
+              <div class="hover-parent">
+              <a href={{url}}>
+                <span title="{{name}}"/>
+			            <img src={{image}} align="middle" width=180  height=248 />
+                </span>
+              </a>
+                <div class="row hover-content">
+                  <span> Because you liked: </span>
+                  <br margin=1px />
+                  {% for cont_image,cont_name in contributors %}
+                      <span title="{{cont_name}}"/>
+		                    <img src={{cont_image}} align="middle" width=58  height=80 />
+                      </span>
+                  {% endfor %}
+                </div>
+              </div>
+            </center>
+            <p/>
+        </div>
+      {% if idx%3==2 %}
+        </div>
+      {% endif %}
     {% endfor %}
   </div>
+  <p/><p/>
   {% endif %}
 
 
