@@ -52,8 +52,9 @@ def predict_top_ratings(user_row,cos_sim,top_N,N_recs):
     # User data needs to be 1D:
     user_row=np.squeeze(user_row)
     # Find valid anime:
+    print('Log: loading valid anime indices')
     valid_idxs = np.where(np.load(valid_path))[0]
-    print('loaded valid idxs. predicting...')
+    print('Log: loaded valid idxs. predicting...')
     # Predict ratings on valid anime
     pratings= [(x,predict_rating(user_row,x,cos_sim[x,:],top_N)) for x in valid_idxs]
     print('predictions complete')
@@ -132,14 +133,18 @@ def get_names_ids():
 def get_recs(user_id=None,user_ratings=None):
     ''' Calculate a user's anime recommendations '''
     if user_id:
+        print('Log: getting user data')
         user_ratings = get_user_data(user_id)
         print(user_ratings)
     elif user_ratings:
         None
     else:
         return None
-    user_row = convert_to_row(user_ratings,load_aid_dict(),N_anime)
-    print('converted user data to row')
+    print('Log: getting aid_dict from SQL')
+    aid_dict = load_aid_dict()
+    print('Log: aid_dict acquired. Converting user row')
+    user_row = convert_to_row(user_ratings,aid_dict,N_anime)
+    print('Log: converted user data to row')
     anime_ids = get_top_predictions(user_row,top_N=20)
     return anime_ids
 
