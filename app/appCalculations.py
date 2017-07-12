@@ -12,19 +12,24 @@ from sklearn.metrics.pairwise import cosine_similarity
 import os, requests
 from bs4 import BeautifulSoup
 import sqlite3
+import json
 
 #%% Key variables:
 Vt_loc = os.path.join('deploy','Vt_impbias_50.npy')
 #Vt_loc = os.path.join('deploy','Vt_impbiasreg-1.5_50.npy')
 valid_path = os.path.join('deploy','valid_anime.npy')
 database = os.path.join('deploy','animeData.db')
+genre_dict_loc = os.path.join('deploy','genre_dict.json')
 N_anime = 12871
 
 #%% Auxillary functions:
+def get_genre_dict():
+    return json.load(open(genre_dict_loc,'r'))
+    
 def get_cos_sim(threshold=0):
     ''' Calculate the cosine similarity '''
     Vt = np.load(Vt_loc)
-    cos_sim = cosine_similarity(np.transpose(Vt))
+    cos_sim = np.array(cosine_similarity(np.transpose(Vt)),dtype=np.float32)
     cos_sim[cos_sim<threshold]=0
     return cos_sim
 
@@ -45,7 +50,7 @@ def get_contributions(user_row,anime_idx,cos_sim_row,N_cont=3,cont_thresh=0):
     contributions = sorted([(idx,x) for idx,x in enumerate(contributions) if x>0],key=lambda x:-x[1])
     return [x[0] for x in contributions[:N_cont] if x[1]>cont_thresh]
 
-def predict_top_ratings(user_row,cos_sim,top_N,N_recs):
+def predict_top_ratings(user_row,cos_sim,top_N,N_recs,related=None,genres=None):
     ''' Leverages the users ratings and the cosine similarities to predict
     a user's top rated anime. Current considers both the similarity to the 
     rated animes and the actual score to be equally important. '''
@@ -54,14 +59,21 @@ def predict_top_ratings(user_row,cos_sim,top_N,N_recs):
     # Find valid anime:
     print('Log: loading valid anime indices')
     valid_idxs = np.where(np.load(valid_path))[0]
-    print('Log: loaded valid idxs. predicting...')
+    print('Log: Altering valid anime andices (if needed)')
+    if related is not None:
+        valid_idxs = [x for x in valid_idxs if x not in related]
+    if genres is not None:
+        in_genre = get_genre_anime(genres)
+        valid_idxs = [x for x in valid_idxs if x in in_genre]
     # Predict ratings on valid anime
+    print('Log: predicting...')
     pratings= [(x,predict_rating(user_row,x,cos_sim[x,:],top_N)) for x in valid_idxs]
-    print('predictions complete')
+    print('Log: predictions complete')
     # Remove anime the user has already rated
     rated = np.where(user_row)[0]
     recs = sorted(pratings, key = lambda x: (-x[1][0], -x[1][1]))
     recs = [x for x in recs if x[0] not in rated]
+    # Filter related:
     print(recs[:N_recs])
     recs_plus = [(x[0],get_contributions(user_row,x[0],cos_sim[x[0],:])) for x in recs[0:N_recs]]
     return recs_plus
@@ -106,9 +118,10 @@ def load_aid_dict(inverse=False):
     con.close()
     return the_dict
 
-def get_top_predictions(user_row,top_N=20):
+def get_top_predictions(user_row,top_N=20,related=None,genres=None):
     ''' Returns info on the anime cooresponding to the top predictions '''
-    aids_plus = predict_top_ratings(user_row,get_cos_sim(),top_N=top_N,N_recs=6)
+    aids_plus = predict_top_ratings(user_row,get_cos_sim(),top_N=top_N,
+                                    N_recs=6,related=related,genres=genres)
     # Request info from the database:
     con = sqlite3.connect(database)
     cur = con.cursor()
@@ -129,8 +142,34 @@ def get_names_ids():
     names_ids = cur.execute('SELECT Name,Anime from AnimeData ORDER BY Name').fetchall()
     con.close()
     return names_ids
+
+def get_related(anime_ids):
+    con = sqlite3.connect(database)
+    cur = con.cursor()
+    related = cur.execute('SELECT Related_Aids from AnimeData WHERE Anime IN ({0})' \
+                          .format(','.join([str(x) for x in anime_ids]))).fetchall()
+    related = [int(x) for x in str.split(','.join([x[0] for x in related]),',')]
+    con.close()
+    return related
+
+def get_genre_anime(genres):
+    con = sqlite3.connect(database)
+    cur = con.cursor()
+    if len(genres)==1:
+        in_genre = cur.execute('SELECT Aid from AnimeData WHERE Genres LIKE "%{0}%"' \
+                      .format(genres[0])).fetchall()
+        in_genre = [int(x[0]) for x in in_genre]
+    if len(genres)>1:
+        sql_base = 'OR Genres LIKE "%{0}%"'
+        sql_end = ' '.join([sql_base.format(x) for x in genres[1:]])
+        in_genre = cur.execute('SELECT Aid from AnimeData WHERE Genres LIKE "%{0}%" {1}' \
+                      .format(genres[0],sql_end)).fetchall()
+        in_genre = [int(x[0]) for x in in_genre]
+    return in_genre
+
+
 #%% Main functions:
-def get_recs(user_id=None,user_ratings=None):
+def get_recs(user_id=None,user_ratings=None,related=None,genres=None):
     ''' Calculate a user's anime recommendations '''
     if user_id:
         print('Log: getting user data')
@@ -140,12 +179,15 @@ def get_recs(user_id=None,user_ratings=None):
         None
     else:
         return None
-    print('Log: getting aid_dict from SQL')
+    print('Log: getting aid_dict from db')
     aid_dict = load_aid_dict()
+    if related:
+        print('Log: getting related anime from db')
+        related = get_related(list(user_ratings.keys()))
     print('Log: aid_dict acquired. Converting user row')
     user_row = convert_to_row(user_ratings,aid_dict,N_anime)
     print('Log: converted user data to row')
-    anime_ids = get_top_predictions(user_row,top_N=20)
+    anime_ids = get_top_predictions(user_row,top_N=20,related=related,genres=genres)
     return anime_ids
 
 def get_results(recs_plus):

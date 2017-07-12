@@ -32,6 +32,8 @@
   <div id="page-wrap">
     <center> Generate recommendations from your anime ratings on MyAnimeList </center>
     <form method="POST"  action="{{ url_for('index') }}">
+
+      <!-- Username input -->
       <div class="input-group">
           <span class="input-group-addon">MyAnimeList Username:</span>
           <input type="text" class="form-control" name="user_id">
@@ -39,6 +41,36 @@
             <button class="btn btn-default" type="submit">Submit</button>
           </span>
       </div>
+
+      <!-- Master Filters -->
+      <div class="checkbox">
+        <div class="row">
+          <div class="col-xs-4">
+            <label>
+              <input type="checkbox" name="genre" id="genre_filter"> Filter by genre
+            </label>
+          </div>
+          <div class="col-xs-8" align=right>
+            <label>
+              <input type="checkbox" name="related" id="related"> Filter related anime
+            </label>
+          </div>
+        </div>
+      </div>
+      <!-- Genre Filters -->
+      <div id="genre_filter_div" style="display:none"> 
+        {% for idx,genre in genres %}
+            {% if idx%4==0 %} <div class="row"> {% endif %}
+            <div class="col-xs-3">
+              <label>
+                <input type="checkbox" name={{genre}}> {{genre}}
+              </label>
+            </div>
+            {% if idx%4==3 or idx==42 %} </div>  {% endif %}
+        {% endfor %}
+      </div>
+
+
     </form>
   </div>
 
@@ -50,8 +82,6 @@
         <div class="input-group" class="form-control" name="anime-element" id="anime-element">
 
 
-
-
           <!-- Anime name -->
           <span class="input-group-addon">Anime name:</span>
           <!-- <select  class="form-control" id="select" name="anime">
@@ -59,7 +89,7 @@
               <option data-value={{id}}> {{name}} </option>
             {% endfor %}
           </select> -->
-          <input list="anime" class="form-control" name="anime" style="width:455px">
+          <input list="anime" class="form-control" name="anime" style="width:454.5px">
             <datalist id="anime" >
               {% for name,id in names_ids %}  
                 <option data-value={{id}}> {{name}} </option>
@@ -67,8 +97,6 @@
             </datalist>
           </input>
           
-
-
 
           <!-- Anime rating -->
           <span class="btn-group" class="form-control">
@@ -84,14 +112,42 @@
           </span>
 
 
-
-
-
         </div>
       </div>
 
+      <!-- Buttons -->
       <button class="btn btn-default" type="submit">Submit</button>
       <button class="btn btn-default" type ="button" onclick="newAnimeElement()" >Add anime</button>
+
+      <!-- Master Filters -->
+      <div class="checkbox">
+        <div class="row">
+          <div class="col-xs-4">
+            <label>
+              <input type="checkbox" name="genre" id="genre_filter2"> Filter by genre
+            </label>
+          </div>
+          <div class="col-xs-8" align=right>
+            <label>
+              <input type="checkbox" name="related" id="related"> Filter related anime
+            </label>
+          </div>
+        </div>
+      </div>
+      <!-- Genre Filters -->
+      <div id="genre_filter2_div" style="display:none"> 
+        {% for idx,genre in genres %}
+            {% if idx%4==0 %} <div class="row"> {% endif %}
+            <div class="col-xs-3">
+              <label>
+                <input type="checkbox" name={{genre}}> {{genre}}
+              </label>
+            </div>
+            {% if idx%4==3 or idx==42 %} </div>  {% endif %}
+        {% endfor %}
+      </div>
+
+
     </form>
     <p/><p/>
   </div>
@@ -147,6 +203,25 @@ function newAnimeElement() {
 }
 </script>
 
+<script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+<script type="text/javascript">
+$('#genre_filter').change(function(){
+  if (this.checked) {
+    $('#genre_filter_div').show();
+  } else {
+    $('#genre_filter_div').hide();
+  }                   
+});
+</script>
+<script type="text/javascript">
+$('#genre_filter2').change(function(){
+  if (this.checked) {
+    $('#genre_filter2_div').show();
+  } else {
+    $('#genre_filter2_div').hide();
+  }                   
+});
+</script>
 
 </html>
 
